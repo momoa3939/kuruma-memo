@@ -84,10 +84,11 @@
       <button id="next" aria-label="次の日">›</button>
     </div>
     <div class="todayRow"><button id="goToday" hidden>今日にもどる</button></div>
-    <div class="sub">駐車場にいない車をタップ（もう一度タップで取り消し）</div>
+    <div class="sub">駐車場に<b>いる</b>車をタップ（もう一度タップで取り消し）</div>
     <div id="grid"></div>
     <div class="sumBox" id="sumText"></div>
-    <button class="wide" id="allHere">今日は全部いた</button>
+    <button class="wide" id="allOut">1台もいない</button>
+    <button class="wide" id="clearDay" hidden>この日の記録を消す</button>
   </section>
 
   <!-- 一覧 -->
@@ -167,14 +168,17 @@
   function esc(s){ return String(s).replace(/[&<>"]/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m];}); }
 
   // ---- 記録 ----
+  // 保存は今までどおり「いなかった車」のリスト。押すのは「いる車」。
   function renderRec(){
     $("dateText").textContent = label(cur);
     $("goToday").hidden = (cur===todayKey());
-    var list = data.records[cur] || [];
+    var done = !!data.done[cur];
+    var absent = data.records[cur] || [];
     var g = $("grid"); g.innerHTML = "";
     data.cars.forEach(function(c){
+      var here = done && absent.indexOf(c.id) < 0;
       var b = document.createElement("button");
-      b.className = "car" + (list.indexOf(c.id)>=0 ? " on" : "");
+      b.className = "car" + (here ? " on" : "");
       if(c.plate){
         b.innerHTML = '<div class="top"><span class="badge">'+esc(c.no)+'</span>'+esc(c.name)+'</div>'+
                       '<div class="plate">'+esc(c.plate)+'</div>';
@@ -186,29 +190,38 @@
       g.appendChild(b);
     });
     var box = $("sumText");
-    if(list.length){
-      box.innerHTML = "いない車："+sortIds(list).map(carHtml).join("、");
-    }else if(data.done[cur]){
-      box.textContent = "全部いました";
-    }else{
+    if(!done){
       box.textContent = "まだ記録していません";
+    }else if(absent.length){
+      box.innerHTML = "いない車："+sortIds(absent).map(carHtml).join("、");
+    }else{
+      box.textContent = "全部いました";
     }
-    var ah = $("allHere");
-    ah.hidden = list.length > 0;
-    ah.className = "wide" + (data.done[cur] && !list.length ? " done" : "");
-    ah.textContent = (data.done[cur] && !list.length) ? "全部いた（取り消す）" : (cur===todayKey() ? "今日は全部いた" : "この日は全部いた");
+    $("allOut").hidden = done;
+    $("clearDay").hidden = !done;
+  }
+  function allIds(){ return data.cars.map(function(c){ return c.id; }); }
+  function setAbsent(list){
+    data.done[cur] = true;
+    if(list.length) data.records[cur] = list; else delete data.records[cur];
   }
   function toggle(id){
-    var list = data.records[cur] || [];
-    var i = list.indexOf(id);
-    if(i>=0) list.splice(i,1); else list.push(id);
-    if(list.length){ data.records[cur] = list; data.done[cur] = true; }
-    else { delete data.records[cur]; }
-    save(); renderRec();
+    var absent;
+    if(!data.done[cur]){
+      // その日はじめてのタップ：押した車以外は「いない」
+      absent = allIds().filter(function(x){ return x!==id; });
+    }else{
+      absent = (data.records[cur] || []).slice();
+      var i = absent.indexOf(id);
+      if(i>=0) absent.splice(i,1); else absent.push(id);
+    }
+    setAbsent(absent); save(); renderRec();
   }
-  $("allHere").onclick = function(){
-    if(data.done[cur]) delete data.done[cur]; else data.done[cur] = true;
-    save(); renderRec();
+  $("allOut").onclick = function(){ setAbsent(allIds()); save(); renderRec(); };
+  $("clearDay").onclick = function(){
+    if(confirm(label(cur)+" の記録を消しますか？")){
+      delete data.done[cur]; delete data.records[cur]; save(); renderRec();
+    }
   };
   $("prev").onclick = function(){ cur = shift(cur,-1); renderRec(); };
   $("next").onclick = function(){ cur = shift(cur,1); renderRec(); };
